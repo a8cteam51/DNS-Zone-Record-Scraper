@@ -5,9 +5,9 @@ A Python tool for discovering and exporting DNS records. Attempts zone transfers
 ## Installation
 
 ```bash
+pip install dnspython
 git clone https://github.com/a8cteam51/DNS-Zone-Record-Scraper.git
 cd dns-scraper
-pip install dnspython
 ```
 
 ## Quick Start

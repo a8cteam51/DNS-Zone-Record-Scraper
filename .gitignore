@@ -1,0 +1,18 @@
+# DNS Scraper exports
+*.zone
+*.csv
+*.txt
+
+# Output directories
+output/
+exports/
+results/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# macOS
+.DS_Store

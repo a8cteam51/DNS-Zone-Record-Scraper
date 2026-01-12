@@ -26,7 +26,7 @@ ALL_RECORD_TYPES = [
 RECORD_TYPES_TXT_CNAME = ['TXT', 'CNAME']  # Most underscore records
 RECORD_TYPES_TXT_ONLY = ['TXT']  # Strict TXT-only records
 RECORD_TYPES_MAIL = ['A', 'AAAA', 'CNAME', 'MX', 'TXT']
-RECORD_TYPES_WEB = ['A', 'AAAA', 'CNAME']
+RECORD_TYPES_WEB = ['A', 'AAAA', 'CNAME', 'TXT']
 RECORD_TYPES_COMMON = ['A', 'AAAA', 'CNAME', 'MX', 'TXT', 'SRV']
 RECORD_TYPES_ROOT = ALL_RECORD_TYPES  # Query everything for root domain
 
@@ -235,7 +235,7 @@ SUBDOMAINS_MAIL = [
     'links', # Link tracking
 ]
 
-# Web/CDN subdomains (typically just A/AAAA/CNAME)
+# Web/CDN subdomains (typically just A/AAAA/CNAME/TXT)
 SUBDOMAINS_WEB = [
     'www', 'www2', 'www3',
     'web', 'web1', 'web2',

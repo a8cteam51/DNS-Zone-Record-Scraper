@@ -8,7 +8,7 @@ Uses **smart record-type selection** by default to minimize unnecessary queries 
 
 ```bash
 pip install dnspython
-git clone https://github.com/a8cteam51/dns-scraper.git
+git clone https://github.com/a8cteam51/DNS-Zone-Record-Scraper.git
 cd dns-scraper
 ```
 

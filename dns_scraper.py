@@ -68,6 +68,10 @@ SUBDOMAINS_TXT_CNAME = [
     'k3._domainkey',
     'key1._domainkey',
     'key2._domainkey',
+    'openhosting1._domainkey',
+    'openhosting2._domainkey',
+    'openhosting1._domainkey.www',
+    'openhosting2._domainkey.www',
     
     # Klaviyo DKIM
     'kl._domainkey',

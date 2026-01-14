@@ -2,6 +2,7 @@
 *.zone
 *.csv
 *.txt
+!requirements.txt
 
 # Output directories
 output/

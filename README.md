@@ -5,7 +5,7 @@ A Python tool for discovering and exporting DNS records. Attempts zone transfers
 ## Installation
 
 ### Prerequisites
-- Python 3.7 or higher
+- Python 3.8 or higher
 - pip (usually comes with Python)
 
 ### Setup
@@ -44,7 +44,7 @@ deactivate
 
 ### Troubleshooting
 
-- **Python version issues:** Ensure you're using Python 3.7+ by running `python3 --version` (or `python --version` on Windows)
+- **Python version issues:** Ensure you're using Python 3.8+ by running `python3 --version` (or `python --version` on Windows)
 - **Permission errors:** If you get permission errors, you may be installing globally. Always use a virtual environment.
 - **Import errors:** Make sure the virtual environment is activated (you should see `(venv)` in your terminal prompt)
 

@@ -4,12 +4,14 @@ A Python tool for discovering and exporting DNS records. Attempts zone transfers
 
 Uses **smart record-type selection** by default to minimize unnecessary queries (~1,500 queries vs ~7,500 in exhaustive mode).
 
+**Detects Cloudflare DNS** and notifies you that A/AAAA records may be proxy IPs if orange-clouded.
+
 ## Installation
 
 ```bash
 pip install dnspython
 git clone https://github.com/a8cteam51/DNS-Zone-Record-Scraper.git
-cd dns-scraper
+cd DNS-Zone-Record-Scraper
 ```
 
 ## Quick Start
@@ -49,23 +51,28 @@ Smart mode queries only relevant record types per subdomain category:
 | TXT + CNAME | `_dmarc`, `*._domainkey`, `_acme-challenge` | TXT, CNAME |
 | TXT only | `_mta-sts`, `_facebook` | TXT |
 | Mail | `mail`, `smtp`, `mx`, `autodiscover` | A, AAAA, CNAME, MX, TXT |
-| Web | `www`, `cdn`, `static`, `mta-sts` | A, AAAA, CNAME |
+| Web | `www`, `cdn`, `static`, `mta-sts` | A, AAAA, CNAME, TXT |
 | Common | `api`, `dev`, `admin` | A, AAAA, CNAME, MX, TXT, SRV |
 | Root | (domain itself) | All 25 types |
 
-### Why TXT + CNAME for DKIM/DMARC?
+## Cloudflare DNS Detection
 
-Many DNS records can be either direct TXT records or CNAME delegations:
+The tool automatically detects when a domain uses Cloudflare DNS by checking NS records for:
+- `*.ns.cloudflare.com`
+- `*.foundationdns.com`
+- `*.foundationdns.net`
+- `*.foundationdns.org`
 
-```
-# Direct TXT record
-k1._domainkey.example.com.  TXT   "v=DKIM1; k=rsa; p=MIGf..."
+When detected, a notice appears explaining:
+- If proxying is enabled (orange cloud), A/AAAA records will show Cloudflare edge IPs
+- DNS-only records (grey cloud) will show the actual origin IPs
+- You should verify proxy status in the Cloudflare dashboard if needed
 
-# CNAME delegation (common with ESPs)
-k1._domainkey.example.com.  CNAME dkim.klaviyo.com.
-```
-
-CNAME delegation lets email service providers rotate keys without requiring DNS changes.
+This notice appears:
+- In the terminal during and after the scan
+- In the BIND file header as comments
+- In CSV exports as a `Warning` column with `CLOUDFLARE_DNS`
+- In TXT exports with notice annotations
 
 ## Examples
 
@@ -152,6 +159,9 @@ grep ",A," scan.csv | cut -d',' -f1,4
 
 # Count records by type
 tail -n +2 scan.csv | cut -d',' -f2 | sort | uniq -c | sort -rn
+
+# Find all Cloudflare DNS records
+grep "CLOUDFLARE_DNS" scan.csv
 ```
 
 ### Cron Job for DNS Monitoring
@@ -211,7 +221,7 @@ echo "Found $$(wc -l < "$$OUTPUT_DIR/all_domains.txt") unique hostnames"
 |-------------|-----------|-----------------|
 | DMARC | `_dmarc` | TXT, CNAME |
 | MTA-STS | `_mta-sts` | TXT only |
-| MTA-STS Policy | `mta-sts` | A, AAAA, CNAME |
+| MTA-STS Policy | `mta-sts` | A, AAAA, CNAME, TXT |
 | TLS-RPT | `_smtp._tls` | TXT, CNAME |
 | BIMI | `default._bimi` | TXT, CNAME |
 | DKIM | `*._domainkey` | TXT, CNAME |
@@ -220,6 +230,7 @@ echo "Found $$(wc -l < "$$OUTPUT_DIR/all_domains.txt") unique hostnames"
 
 | Provider | Selectors |
 |----------|-----------|
+| Pressable | `openhosting1._domainkey`, `openhosting2._domainkey` |
 | Klaviyo | `kl._domainkey`, `kl2._domainkey` |
 | Mailchimp | `k2._domainkey`, `k3._domainkey`, `mte1._domainkey` |
 | MailPoet | `mailpoet1._domainkey`, `mailpoet2._domainkey` |
@@ -262,8 +273,8 @@ echo "Found $$(wc -l < "$$OUTPUT_DIR/all_domains.txt") unique hostnames"
 ## Output Formats
 
 **BIND (.zone)** — Standard zone file for DNS servers  
-**CSV (.csv)** — `Hostname,Record Type,TTL,Value`  
-**TXT (.txt)** — Human-readable report
+**CSV (.csv)** — `Hostname,Record Type,TTL,Value,Warning`  
+**TXT (.txt)** — Human-readable report with notices
 
 ## Limitations
 
@@ -271,6 +282,7 @@ This tool cannot discover:
 - Randomly-named subdomains not in the wordlist
 - Records behind DNS firewalls
 - Internal-only records
+- True origin IPs behind Cloudflare proxy (orange cloud)
 
 For complete zone data, you need zone transfer access or DNS provider API access.
 

@@ -84,6 +84,10 @@ SUBDOMAINS_TXT_CNAME = [
     'openhosting2._domainkey',
     'openhosting1._domainkey.www',
     'openhosting2._domainkey.www',
+
+    # WordPress.com DKIM
+    'wpcloud1._domainkey',
+    'wpcloud2._domainkey',
     
     # Klaviyo DKIM
     'kl._domainkey',

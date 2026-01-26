@@ -114,6 +114,59 @@ This notice appears:
 - In CSV exports as a `Warning` column with `CLOUDFLARE_DNS`
 - In TXT exports with notice annotations
 
+### Example: Cloudflare Detection Output
+
+When scanning a domain using Cloudflare, you'll see output like this:
+
+```
+DNS Record Scraper - Scanning: example.com
+Mode: SMART
+
+[*] Checking for WAF/proxy services...
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!  NOTICE: Domain uses Cloudflare DNS
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+  Detected Cloudflare nameservers:
+    - ava.ns.cloudflare.com
+    - reza.ns.cloudflare.com
+
+  If proxying is enabled (orange cloud) for any records, those
+  A/AAAA records will show Cloudflare IP addresses instead of
+  the true origin server IPs.
+
+  DNS-only records (grey cloud) will show the actual origin IPs.
+
+  Verify proxy status in the Cloudflare dashboard if needed.
+
+[*] Attempting zone transfer for example.com...
+[*] Zone transfer not available (this is normal)
+[*] Performing DNS enumeration...
+```
+
+The warning will also appear in exported files:
+
+**CSV Output:**
+```csv
+Hostname,Record Type,TTL,Value,Warning
+example.com,A,300,104.21.45.67,CLOUDFLARE_DNS
+example.com,AAAA,300,2606:4700:3031::ac43:bd4f,CLOUDFLARE_DNS
+www.example.com,CNAME,300,example.com,
+```
+
+**Summary Output:**
+```
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  NOTICE: Cloudflare DNS detected
+  A/AAAA records may be proxy IPs if orange-clouded
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+[A]
+  example.com                                         300      104.21.45.67  ⚠️ CLOUDFLARE_DNS
+  www.example.com                                     300      104.21.45.67  ⚠️ CLOUDFLARE_DNS
+```
+
 ## Examples
 
 ### Basic Scans

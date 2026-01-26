@@ -3,17 +3,19 @@
 DNS Zone Record Scraper
 Discovers and exports all available DNS records for a domain.
 Uses smart record-type selection by default to minimize unnecessary queries.
+Detects and warns about WAF/proxy services like Cloudflare.
 """
 
 import dns.resolver
 import dns.zone
 import dns.query
 import dns.rdatatype
+import dns.exception
 import csv
 import argparse
 import sys
 from datetime import datetime
-from typing import Dict, List, Tuple, Optional, Set
+from typing import Dict, List, Tuple, Optional, Set, Any, cast
 
 # All DNS record types
 ALL_RECORD_TYPES = [
@@ -29,6 +31,14 @@ RECORD_TYPES_MAIL = ['A', 'AAAA', 'CNAME', 'MX', 'TXT']
 RECORD_TYPES_WEB = ['A', 'AAAA', 'CNAME', 'TXT']
 RECORD_TYPES_COMMON = ['A', 'AAAA', 'CNAME', 'MX', 'TXT', 'SRV']
 RECORD_TYPES_ROOT = ALL_RECORD_TYPES  # Query everything for root domain
+
+# WAF/Proxy detection patterns (nameserver-based)
+CLOUDFLARE_NS_PATTERNS = [
+    '.ns.cloudflare.com',
+    '.foundationdns.com',
+    '.foundationdns.net',
+    '.foundationdns.org',
+]
 
 # =============================================================================
 # SUBDOMAIN DEFINITIONS WITH CATEGORIES
@@ -68,10 +78,16 @@ SUBDOMAINS_TXT_CNAME = [
     'k3._domainkey',
     'key1._domainkey',
     'key2._domainkey',
+    
+    # Pressable DKIM
     'openhosting1._domainkey',
     'openhosting2._domainkey',
     'openhosting1._domainkey.www',
     'openhosting2._domainkey.www',
+
+    # WordPress.com DKIM
+    'wpcloud1._domainkey',
+    'wpcloud2._domainkey',
     
     # Klaviyo DKIM
     'kl._domainkey',
@@ -383,6 +399,10 @@ class DNSScraper:
         self.discovered_hosts: Set[str] = set()
         self.query_count = 0
         
+        # WAF/Proxy detection
+        self.detected_proxy: Optional[str] = None
+        self.proxy_nameservers: List[str] = []
+        
         # Configure resolver
         self.resolver = dns.resolver.Resolver()
         self.resolver.timeout = timeout
@@ -396,6 +416,62 @@ class DNSScraper:
         if self.verbose:
             print(f"[*] {message}")
     
+    def detect_cloudflare(self) -> bool:
+        """Check if domain uses Cloudflare by examining NS records."""
+        try:
+            ns_records = self.resolver.resolve(self.domain, 'NS')
+            
+            for ns in ns_records:
+                ns_rdata = cast(Any, ns)
+                ns_host = str(ns_rdata.target).lower().rstrip('.')
+                
+                for pattern in CLOUDFLARE_NS_PATTERNS:
+                    if ns_host.endswith(pattern):
+                        self.detected_proxy = 'Cloudflare'
+                        self.proxy_nameservers.append(ns_host)
+            
+            if self.detected_proxy:
+                return True
+                
+        except Exception as e:
+            self.log(f"Could not check NS records for proxy detection: {e}")
+        
+        return False
+    
+    def print_proxy_warning(self):
+        """Print warning about detected proxy/WAF."""
+        if not self.detected_proxy:
+            return
+        
+        print()
+        print("!" * 64)
+        print(f"!  NOTICE: Domain uses {self.detected_proxy} DNS")
+        print("!" * 64)
+        print()
+        print(f"  Detected {self.detected_proxy} nameservers:")
+        for ns in self.proxy_nameservers:
+            print(f"    - {ns}")
+        print()
+        print("  If proxying is enabled (orange cloud) for any records, those")
+        print("  A/AAAA records will show Cloudflare IP addresses instead of")
+        print("  the true origin server IPs.")
+        print()
+        print("  DNS-only records (grey cloud) will show the actual origin IPs.")
+        print()
+        print("  Verify proxy status in the Cloudflare dashboard if needed.")
+        print()
+    
+    def get_record_warning(self, hostname: str, record_type: str) -> str:
+        """Return warning string for a record if applicable."""
+        if not self.detected_proxy:
+            return ''
+        
+        # Only A and AAAA records could potentially be proxied
+        if record_type in ['A', 'AAAA']:
+            return f'{self.detected_proxy.upper()}_DNS'
+        
+        return ''
+    
     def try_zone_transfer(self) -> bool:
         """Attempt a zone transfer (AXFR) - rarely works but worth trying."""
         self.log(f"Attempting zone transfer for {self.domain}...")
@@ -405,7 +481,8 @@ class DNSScraper:
             ns_records = self.resolver.resolve(self.domain, 'NS')
             
             for ns in ns_records:
-                ns_host = str(ns.target).rstrip('.')
+                ns_rdata = cast(Any, ns)
+                ns_host = str(ns_rdata.target).rstrip('.')
                 self.log(f"Trying AXFR from {ns_host}...")
                 
                 try:
@@ -430,7 +507,7 @@ class DNSScraper:
                                 
                                 self._add_record(
                                     hostname, record_type,
-                                    rdataset.ttl, str(rdata)
+                                    cast(int, rdataset.ttl), str(rdata)
                                 )
                     
                     print(f"[+] Zone transfer successful from {ns_host}!")
@@ -466,29 +543,36 @@ class DNSScraper:
         
         try:
             answers = self.resolver.resolve(hostname, record_type)
+            ttl = cast(int, answers.ttl)
             
             for rdata in answers:
                 value = str(rdata)
                 
                 # Format specific record types nicely
+                # Using cast() to help type checker understand specific rdata types
                 if record_type == 'MX':
-                    value = f"{rdata.preference} {rdata.exchange}"
+                    mx_rdata = cast(Any, rdata)
+                    value = f"{mx_rdata.preference} {mx_rdata.exchange}"
                 elif record_type == 'SOA':
-                    value = (f"{rdata.mname} {rdata.rname} {rdata.serial} "
-                            f"{rdata.refresh} {rdata.retry} {rdata.expire} "
-                            f"{rdata.minimum}")
+                    soa_rdata = cast(Any, rdata)
+                    value = (f"{soa_rdata.mname} {soa_rdata.rname} {soa_rdata.serial} "
+                            f"{soa_rdata.refresh} {soa_rdata.retry} {soa_rdata.expire} "
+                            f"{soa_rdata.minimum}")
                 elif record_type == 'SRV':
-                    value = f"{rdata.priority} {rdata.weight} {rdata.port} {rdata.target}"
+                    srv_rdata = cast(Any, rdata)
+                    value = f"{srv_rdata.priority} {srv_rdata.weight} {srv_rdata.port} {srv_rdata.target}"
                 elif record_type == 'CAA':
-                    value = f'{rdata.flags} {rdata.tag} "{rdata.value}"'
+                    caa_rdata = cast(Any, rdata)
+                    value = f'{caa_rdata.flags} {caa_rdata.tag} "{caa_rdata.value}"'
                 elif record_type == 'TXT':
+                    txt_rdata = cast(Any, rdata)
                     # Handle TXT records with multiple strings
-                    if hasattr(rdata, 'strings'):
+                    if hasattr(txt_rdata, 'strings'):
                         value = ''.join(s.decode() if isinstance(s, bytes) else s
-                                       for s in rdata.strings)
+                                       for s in txt_rdata.strings)
                     value = f'"{value}"'
                 
-                self._add_record(hostname, record_type, answers.ttl, value)
+                self._add_record(hostname, record_type, ttl, value)
                 
         except dns.resolver.NXDOMAIN:
             pass  # Domain doesn't exist
@@ -577,6 +661,14 @@ class DNSScraper:
             print("Subdomain enumeration: DISABLED")
         print()
         
+        # Check for WAF/proxy services
+        print("[*] Checking for WAF/proxy services...")
+        if self.detect_cloudflare():
+            self.print_proxy_warning()
+        else:
+            print("[*] No WAF/proxy detected")
+            print()
+        
         # Try zone transfer first
         if self.try_zone_transfer():
             return  # Got everything from zone transfer
@@ -616,6 +708,18 @@ class DNSScraper:
             f.write(f"; Generated: {datetime.now().isoformat()}\n")
             f.write(f"; Tool: DNS Zone Record Scraper\n")
             f.write(f";\n")
+            
+            # Add proxy warning if detected
+            if self.detected_proxy:
+                f.write(f"; {'='*60}\n")
+                f.write(f"; NOTICE: This domain uses {self.detected_proxy} DNS\n")
+                f.write(f"; If proxying is enabled (orange cloud) for any records,\n")
+                f.write(f"; A/AAAA records will be {self.detected_proxy} edge IPs, not origin IPs.\n")
+                f.write(f"; DNS-only records (grey cloud) will show actual origin IPs.\n")
+                f.write(f"; Verify proxy status in the {self.detected_proxy} dashboard.\n")
+                f.write(f"; {'='*60}\n")
+                f.write(f";\n")
+            
             f.write(f"$ORIGIN {self.domain}.\n")
             f.write(f"$TTL 3600\n\n")
             
@@ -640,11 +744,12 @@ class DNSScraper:
         """Export records in CSV format."""
         with open(filename, 'w', newline='') as f:
             writer = csv.writer(f)
-            writer.writerow(['Hostname', 'Record Type', 'TTL', 'Value'])
+            writer.writerow(['Hostname', 'Record Type', 'TTL', 'Value', 'Warning'])
             
             for record_type in sorted(self.records.keys()):
                 for hostname, rtype, ttl, value in sorted(self.records[record_type]):
-                    writer.writerow([hostname, rtype, ttl, value])
+                    warning = self.get_record_warning(hostname, rtype)
+                    writer.writerow([hostname, rtype, ttl, value, warning])
         
         print(f"[+] Exported CSV format to: {filename}")
     
@@ -653,15 +758,35 @@ class DNSScraper:
         with open(filename, 'w') as f:
             f.write(f"DNS Records for: {self.domain}\n")
             f.write(f"Generated: {datetime.now().isoformat()}\n")
-            f.write(f"{'='*70}\n\n")
+            f.write(f"{'='*70}\n")
+            
+            # Add proxy warning if detected
+            if self.detected_proxy:
+                f.write(f"\n")
+                f.write(f"{'!'*70}\n")
+                f.write(f"  NOTICE: This domain uses {self.detected_proxy} DNS\n")
+                f.write(f"\n")
+                f.write(f"  If proxying is enabled (orange cloud) for any records,\n")
+                f.write(f"  A/AAAA records will show {self.detected_proxy} IPs instead of origin IPs.\n")
+                f.write(f"\n")
+                f.write(f"  DNS-only records (grey cloud) will show the actual origin IPs.\n")
+                f.write(f"\n")
+                f.write(f"  Verify proxy status in the {self.detected_proxy} dashboard.\n")
+                f.write(f"{'!'*70}\n")
+            
+            f.write(f"\n")
             
             for record_type in sorted(self.records.keys()):
                 f.write(f"\n{record_type} Records ({len(self.records[record_type])})\n")
                 f.write(f"{'-'*50}\n")
                 for hostname, rtype, ttl, value in sorted(self.records[record_type]):
+                    warning = self.get_record_warning(hostname, rtype)
                     f.write(f"  {hostname}\n")
                     f.write(f"    TTL: {ttl}\n")
-                    f.write(f"    Value: {value}\n\n")
+                    f.write(f"    Value: {value}\n")
+                    if warning:
+                        f.write(f"    Notice: {warning}\n")
+                    f.write(f"\n")
         
         print(f"[+] Exported text format to: {filename}")
     
@@ -670,6 +795,13 @@ class DNSScraper:
         print(f"\n{'='*60}")
         print(f"SUMMARY - {self.domain}")
         print(f"{'='*60}\n")
+        
+        # Print proxy warning in summary
+        if self.detected_proxy:
+            print(f"{'!'*60}")
+            print(f"  NOTICE: {self.detected_proxy} DNS detected")
+            print(f"  A/AAAA records may be proxy IPs if orange-clouded")
+            print(f"{'!'*60}\n")
         
         if not self.records:
             print("No records found.")
@@ -694,9 +826,9 @@ class DNSScraper:
         for record_type in sorted(self.records.keys()):
             print(f"\n[{record_type}]")
             for hostname, rtype, ttl, value in sorted(self.records[record_type]):
-                print(f"  {hostname:<50} {ttl:<8} {value}")
-
-
+                warning = self.get_record_warning(hostname, rtype)
+                warning_str = f"  ⚠️ {warning}" if warning else ""
+                print(f"  {hostname:<50} {ttl:<8} {value}{warning_str}")
 def main():
     parser = argparse.ArgumentParser(
         description='DNS Zone Record Scraper - Discover and export DNS records',

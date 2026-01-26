@@ -8,11 +8,51 @@ Uses **smart record-type selection** by default to minimize unnecessary queries 
 
 ## Installation
 
+### Prerequisites
+- Python 3.8 or higher
+- pip (usually comes with Python)
+
+### Setup
+
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/a8cteam51/DNS-Zone-Record-Scraper.git
+   cd DNS-Zone-Record-Scraper
+   ```
+
+2. **Create a virtual environment:**
+   
+   On macOS/Linux:
+   ```bash
+   python3 -m venv venv
+   source venv/bin/activate
+   ```
+   
+   On Windows:
+   ```bash
+   python -m venv venv
+   venv\Scripts\activate
+   ```
+
+3. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+### Deactivating the Virtual Environment
+
+When you're done, deactivate the virtual environment:
 ```bash
-pip install dnspython
-git clone https://github.com/a8cteam51/DNS-Zone-Record-Scraper.git
-cd DNS-Zone-Record-Scraper
+
+deactivate
+
 ```
+
+### Troubleshooting
+
+- **Python version issues:** Ensure you're using Python 3.8+ by running `python3 --version` (or `python --version` on Windows)
+- **Permission errors:** If you get permission errors, you may be installing globally. Always use a virtual environment.
+- **Import errors:** Make sure the virtual environment is activated (you should see `(venv)` in your terminal prompt)
 
 ## Quick Start
 

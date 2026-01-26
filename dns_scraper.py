@@ -170,6 +170,11 @@ SUBDOMAINS_TXT_CNAME = [
     'sparkpost._domainkey',
     'sp._domainkey',
     
+    # Emma DKIM
+    'e2ma-k1._domainkey',
+    'e2ma-k2._domainkey',
+    'e2ma-k3._domainkey',
+
     # Mailjet DKIM
     'mailjet._domainkey',
     

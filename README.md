@@ -10,6 +10,7 @@ Uses **smart record-type selection** by default to minimize unnecessary queries 
 
 ### Prerequisites
 - Python 3.8 or higher
+- `dnspython`
 - pip (usually comes with Python)
 
 ### Setup

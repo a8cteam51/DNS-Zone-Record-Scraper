@@ -90,7 +90,10 @@ Smart mode queries only relevant record types per subdomain category:
 | Category | Example Subdomains | Record Types |
 |----------|-------------------|--------------|
 | TXT + CNAME | `_dmarc`, `*._domainkey`, `_acme-challenge` | TXT, CNAME |
-| TXT only | `_mta-sts`, `_facebook` | TXT |
+| TXT only | `_mta-sts`, `_vercel`, `asuid.www` | TXT |
+| CNAME only | `enterpriseenrollment`, `enterpriseregistration`, `msoid` | CNAME |
+| SRV only | `_autodiscover._tcp`, `_sipfederationtls._tcp` | SRV |
+| TLSA only | `_25._tcp`, `_443._tcp` | TLSA |
 | Mail | `mail`, `smtp`, `mx`, `autodiscover` | A, AAAA, CNAME, MX, TXT |
 | Web | `www`, `cdn`, `static`, `mta-sts` | A, AAAA, CNAME, TXT |
 | Common | `api`, `dev`, `admin` | A, AAAA, CNAME, MX, TXT, SRV |

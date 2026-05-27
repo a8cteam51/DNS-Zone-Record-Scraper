@@ -27,6 +27,9 @@ ALL_RECORD_TYPES = [
 # Smart record type sets for different subdomain categories
 RECORD_TYPES_TXT_CNAME = ['TXT', 'CNAME']  # Most underscore records
 RECORD_TYPES_TXT_ONLY = ['TXT']  # Strict TXT-only records
+RECORD_TYPES_CNAME_ONLY = ['CNAME']  # Service aliases
+RECORD_TYPES_SRV_ONLY = ['SRV']  # Service discovery records
+RECORD_TYPES_TLSA_ONLY = ['TLSA']  # DANE/TLSA records
 RECORD_TYPES_MAIL = ['A', 'AAAA', 'CNAME', 'MX', 'TXT']
 RECORD_TYPES_WEB = ['A', 'AAAA', 'CNAME', 'TXT']
 RECORD_TYPES_COMMON = ['A', 'AAAA', 'CNAME', 'MX', 'TXT', 'SRV']
@@ -67,6 +70,8 @@ SUBDOMAINS_TXT_CNAME = [
     '_domainkey',
     'default._domainkey',
     'dkim._domainkey',
+    'dkim1._domainkey',
+    'dkim2._domainkey',
     'mail._domainkey',
     'email._domainkey',
     'selector1._domainkey',
@@ -78,6 +83,10 @@ SUBDOMAINS_TXT_CNAME = [
     'k3._domainkey',
     'key1._domainkey',
     'key2._domainkey',
+    'sig1._domainkey',
+    'sig2._domainkey',
+    'mx1._domainkey',
+    'mx2._domainkey',
     
     # Pressable DKIM
     'openhosting1._domainkey',
@@ -119,6 +128,10 @@ SUBDOMAINS_TXT_CNAME = [
     # Microsoft 365 DKIM
     'selector1._domainkey',
     'selector2._domainkey',
+
+    # Microsoft 365 / Exchange federation
+    'exchangedelegation',
+    'autodiscover.service',
     
     # HubSpot DKIM
     'hs1._domainkey',
@@ -165,6 +178,8 @@ SUBDOMAINS_TXT_CNAME = [
     'mailo._domainkey',
     'mx._domainkey',
     'smtp._domainkey',
+    'pdk1._domainkey',
+    'pdk2._domainkey',
     
     # SparkPost DKIM
     'sparkpost._domainkey',
@@ -231,11 +246,55 @@ SUBDOMAINS_TXT_ONLY = [
     
     # Facebook domain verification - only supports TXT
     '_facebook',
+
+    # SaaS domain verification
+    '_vercel',
+    '_slack-challenge',
+    '_github-pages-challenge',
+
+    # Azure App Service domain verification
+    'asuid',
+    'asuid.www',
+    'asuid.app',
+    'asuid.api',
 ]
 
 # MTA-STS policy hosting subdomain (serves the policy file over HTTPS)
 SUBDOMAINS_MTA_STS_POLICY = [
     'mta-sts',  # A/AAAA/CNAME - points to web server hosting policy
+]
+
+# CNAME-only service aliases
+SUBDOMAINS_CNAME = [
+    # Microsoft 365 / Intune / Entra ID
+    'enterpriseenrollment',
+    'enterpriseregistration',
+    'msoid',
+
+    # Email provider tracking / sending aliases
+    'email.mg',
+    'email.mail',
+]
+
+# SRV service discovery records
+SUBDOMAINS_SRV = [
+    # Exchange / Outlook Autodiscover
+    '_autodiscover._tcp',
+
+    # Microsoft 365 / Teams / Skype for Business federation
+    '_sip._tls',
+    '_sip._tcp',
+    '_sipfederationtls._tcp',
+]
+
+# TLSA service records
+SUBDOMAINS_TLSA = [
+    '_25._tcp',
+    '_443._tcp',
+    '_465._tcp',
+    '_587._tcp',
+    '_993._tcp',
+    '_995._tcp',
 ]
 
 # Mail infrastructure subdomains
@@ -253,6 +312,7 @@ SUBDOMAINS_MAIL = [
     'lyncdiscover',
     'pm-bounces',
     'bounce', 'bounces',
+    'mg',
     'send',  # Klaviyo sending subdomain
     'em',    # SendGrid link tracking
     'click', # Click tracking
@@ -606,6 +666,9 @@ class DNSScraper:
                 SUBDOMAINS_TXT_CNAME +
                 SUBDOMAINS_TXT_ONLY +
                 SUBDOMAINS_MTA_STS_POLICY +
+                SUBDOMAINS_CNAME +
+                SUBDOMAINS_SRV +
+                SUBDOMAINS_TLSA +
                 SUBDOMAINS_MAIL +
                 SUBDOMAINS_WEB +
                 SUBDOMAINS_COMMON
@@ -630,6 +693,21 @@ class DNSScraper:
             for subdomain in SUBDOMAINS_MTA_STS_POLICY:
                 hostname = f"{subdomain}.{self.domain}"
                 query_plan.append((hostname, RECORD_TYPES_WEB))
+
+            # CNAME-only service aliases
+            for subdomain in SUBDOMAINS_CNAME:
+                hostname = f"{subdomain}.{self.domain}"
+                query_plan.append((hostname, RECORD_TYPES_CNAME_ONLY))
+
+            # Service discovery records
+            for subdomain in SUBDOMAINS_SRV:
+                hostname = f"{subdomain}.{self.domain}"
+                query_plan.append((hostname, RECORD_TYPES_SRV_ONLY))
+
+            # TLSA service records
+            for subdomain in SUBDOMAINS_TLSA:
+                hostname = f"{subdomain}.{self.domain}"
+                query_plan.append((hostname, RECORD_TYPES_TLSA_ONLY))
             
             # Mail infrastructure
             for subdomain in SUBDOMAINS_MAIL:

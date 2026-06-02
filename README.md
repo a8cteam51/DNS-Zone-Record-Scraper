@@ -1,388 +1,146 @@
 # DNS Zone Record Scraper
 
-A Python tool for discovering and exporting DNS records. Attempts zone transfers, enumerates 25+ record types, discovers 300+ subdomains, and exports to BIND, CSV, or TXT formats.
+Python command-line utility for discovering DNS records for a domain and exporting
+the results. The script checks for Cloudflare DNS, attempts an AXFR zone
+transfer, then enumerates the root domain and a static set of common subdomains.
 
-Uses **smart record-type selection** by default to minimize unnecessary queries (~1,500 queries vs ~7,500 in exhaustive mode).
+## Repository Contents
 
-**Detects Cloudflare DNS** and notifies you that A/AAAA records may be proxy IPs if orange-clouded.
+- `dns_scraper.py` - CLI entry point and `DNSScraper` implementation.
+- `requirements.txt` - Python dependency list.
+- `.gitignore` - ignores generated DNS exports, local output directories, virtual
+  environments, Python caches, and macOS metadata.
+- `LICENSE` - MIT license.
 
-## Installation
+No CI workflow, deploy configuration, package manifest, lockfile, or automated
+lint/test configuration is currently tracked.
 
-### Prerequisites
-- Python 3.8 or higher
-- `dnspython`
-- pip (usually comes with Python)
+## Requirements
 
-### Setup
+- Python 3.8 or newer, as documented by the project.
+- `pip` and a Python virtual environment.
+- Network access to DNS resolvers for the domains being scanned.
 
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/a8cteam51/DNS-Zone-Record-Scraper.git
-   cd DNS-Zone-Record-Scraper
-   ```
+Install the runtime dependency from `requirements.txt`:
 
-2. **Create a virtual environment:**
-   
-   On macOS/Linux:
-   ```bash
-   python3 -m venv venv
-   source venv/bin/activate
-   ```
-   
-   On Windows:
-   ```bash
-   python -m venv venv
-   venv\Scripts\activate
-   ```
-
-3. **Install dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-### Deactivating the Virtual Environment
-
-When you're done, deactivate the virtual environment:
-```bash
-
-deactivate
-
+```sh
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
 ```
 
-### Troubleshooting
+The only tracked Python package requirement is:
 
-- **Python version issues:** Ensure you're using Python 3.8+ by running `python3 --version` (or `python --version` on Windows)
-- **Permission errors:** If you get permission errors, you may be installing globally. Always use a virtual environment.
-- **Import errors:** Make sure the virtual environment is activated (you should see `(venv)` in your terminal prompt)
+```text
+dnspython>=2.6.1,<3.0.0
+```
 
-## Quick Start
+## Usage
 
-```bash
-# Smart mode (default) - fast and efficient
+Run a scan without writing export files:
+
+```sh
+python3 dns_scraper.py example.com
+```
+
+Write all supported export formats using a shared base filename:
+
+```sh
 python3 dns_scraper.py example.com -o example_dns
+```
 
-# Exhaustive mode - query all record types for all subdomains
+Run a root-domain-only scan and export CSV:
+
+```sh
+python3 dns_scraper.py example.com --no-subdomains --format csv -o quick_scan
+```
+
+Run exhaustive mode, which queries every configured record type for every
+configured subdomain:
+
+```sh
 python3 dns_scraper.py example.com --exhaustive -o full_scan
 ```
 
-## Options
+## CLI Options
 
-| Flag | Description |
-|------|-------------|
-| `-o, --output` | Output filename (without extension) |
-| `-f, --format` | Export format: `bind`, `csv`, `txt`, or `all` (default: all) |
-| `-n, --nameserver` | Custom DNS server (e.g., `8.8.8.8`) |
-| `-t, --timeout` | Query timeout in seconds (default: 5.0) |
-| `-v, --verbose` | Show each record as discovered |
-| `--no-subdomains` | Skip subdomain enumeration |
-| `--exhaustive` | Query all 25 record types for every subdomain |
+| Option | Description |
+| --- | --- |
+| `domain` | Domain name to scan. |
+| `-o, --output` | Output filename without extension. When set, exports are written after the terminal summary. |
+| `-f, --format` | Export format: `bind`, `csv`, `txt`, or `all`. Defaults to `all`. |
+| `-n, --nameserver` | Custom DNS server to query, such as `8.8.8.8`. |
+| `-t, --timeout` | Query timeout in seconds. Defaults to `5.0`. |
+| `-v, --verbose` | Print each discovered record and additional scan details. |
+| `--no-subdomains` | Query only the root domain. |
+| `--exhaustive` | Query all configured record types for all configured subdomains. |
 
-## Smart vs Exhaustive Mode
+## Scan Behavior
 
-| Mode | Queries | Use Case |
-|------|---------|----------|
-| **Smart (default)** | ~1,500 | Daily use, quick scans |
-| **Exhaustive** | ~7,500 | Thorough audits, unusual setups |
-| **No subdomains** | 25 | Root domain only |
+The scraper first checks the domain's NS records for Cloudflare nameserver
+patterns:
 
-Smart mode queries only relevant record types per subdomain category:
+- `.ns.cloudflare.com`
+- `.foundationdns.com`
+- `.foundationdns.net`
+- `.foundationdns.org`
 
-| Category | Example Subdomains | Record Types |
-|----------|-------------------|--------------|
-| TXT + CNAME | `_dmarc`, `*._domainkey`, `_acme-challenge` | TXT, CNAME |
-| TXT only | `_mta-sts`, `_vercel`, `asuid.www` | TXT |
-| CNAME only | `enterpriseenrollment`, `enterpriseregistration`, `msoid` | CNAME |
-| SRV only | `_autodiscover._tcp`, `_sipfederationtls._tcp` | SRV |
-| TLSA only | `_25._tcp`, `_443._tcp` | TLSA |
-| Mail | `mail`, `smtp`, `mx`, `autodiscover` | A, AAAA, CNAME, MX, TXT |
-| Web | `www`, `cdn`, `static`, `mta-sts` | A, AAAA, CNAME, TXT |
-| Common | `api`, `dev`, `admin` | A, AAAA, CNAME, MX, TXT, SRV |
-| Root | (domain itself) | All 25 types |
+When Cloudflare DNS is detected, the terminal output, BIND export, TXT export,
+and CSV `Warning` column note that A and AAAA records may be Cloudflare edge
+addresses when the records are proxied.
 
-## Cloudflare DNS Detection
+After the Cloudflare check, the scraper attempts a zone transfer from discovered
+nameservers. If AXFR succeeds, the transferred records are used. If it does not
+succeed, the scraper builds a query plan from constants in `dns_scraper.py`.
 
-The tool automatically detects when a domain uses Cloudflare DNS by checking NS records for:
-- `*.ns.cloudflare.com`
-- `*.foundationdns.com`
-- `*.foundationdns.net`
-- `*.foundationdns.org`
+The root domain is queried for the configured record types in `ALL_RECORD_TYPES`:
 
-When detected, a notice appears explaining:
-- If proxying is enabled (orange cloud), A/AAAA records will show Cloudflare edge IPs
-- DNS-only records (grey cloud) will show the actual origin IPs
-- You should verify proxy status in the Cloudflare dashboard if needed
-
-This notice appears:
-- In the terminal during and after the scan
-- In the BIND file header as comments
-- In CSV exports as a `Warning` column with `CLOUDFLARE_DNS`
-- In TXT exports with notice annotations
-
-### Example: Cloudflare Detection Output
-
-When scanning a domain using Cloudflare, you'll see output like this:
-
-```
-DNS Record Scraper - Scanning: example.com
-Mode: SMART
-
-[*] Checking for WAF/proxy services...
-
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!  NOTICE: Domain uses Cloudflare DNS
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
-  Detected Cloudflare nameservers:
-    - ava.ns.cloudflare.com
-    - reza.ns.cloudflare.com
-
-  If proxying is enabled (orange cloud) for any records, those
-  A/AAAA records will show Cloudflare IP addresses instead of
-  the true origin server IPs.
-
-  DNS-only records (grey cloud) will show the actual origin IPs.
-
-  Verify proxy status in the Cloudflare dashboard if needed.
-
-[*] Attempting zone transfer for example.com...
-[*] Zone transfer not available (this is normal)
-[*] Performing DNS enumeration...
+```text
+A, AAAA, CNAME, MX, TXT, NS, SOA, SRV, CAA, PTR, DNSKEY, DS, NAPTR, SPF,
+TLSA, SSHFP, LOC, HINFO, RP, AFSDB, CERT, DNAME, HTTPS, SVCB
 ```
 
-The warning will also appear in exported files:
+By default, smart mode queries subdomains with category-specific record type
+sets, such as TXT/CNAME records for DKIM and verification names, SRV records for
+service discovery names, TLSA records for DANE names, mail-oriented records for
+mail hosts, web-oriented records for web and CDN hosts, and a broader set for
+common application and infrastructure names.
 
-**CSV Output:**
-```csv
-Hostname,Record Type,TTL,Value,Warning
-example.com,A,300,104.21.45.67,CLOUDFLARE_DNS
-example.com,AAAA,300,2606:4700:3031::ac43:bd4f,CLOUDFLARE_DNS
-www.example.com,CNAME,300,example.com,
-```
-
-**Summary Output:**
-```
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  NOTICE: Cloudflare DNS detected
-  A/AAAA records may be proxy IPs if orange-clouded
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
-[A]
-  example.com                                         300      104.21.45.67  ⚠️ CLOUDFLARE_DNS
-  www.example.com                                     300      104.21.45.67  ⚠️ CLOUDFLARE_DNS
-```
-
-## Examples
-
-### Basic Scans
-
-```bash
-# Display results only (no export)
-python3 dns_scraper.py example.com
-
-# Export to all formats
-python3 dns_scraper.py example.com -o results
-
-# Quick scan - root domain only
-python3 dns_scraper.py example.com --no-subdomains -o quick
-
-# Thorough scan - all record types everywhere
-python3 dns_scraper.py example.com --exhaustive -o thorough
-```
-
-### Using Different DNS Servers
-
-```bash
-# Google DNS
-python3 dns_scraper.py example.com -n 8.8.8.8 -o google_dns
-
-# Cloudflare DNS
-python3 dns_scraper.py example.com -n 1.1.1.1 -o cloudflare_dns
-
-# Quad9 DNS
-python3 dns_scraper.py example.com -n 9.9.9.9 -o quad9_dns
-```
-
-### Export Format Control
-
-```bash
-# BIND zone file only
-python3 dns_scraper.py example.com -f bind -o zone
-
-# CSV only (for spreadsheets)
-python3 dns_scraper.py example.com -f csv -o records
-
-# Text only (human-readable)
-python3 dns_scraper.py example.com -f txt -o report
-```
-
-### Batch Scanning
-
-```bash
-#!/bin/bash
-# scan_domains.sh - Scan multiple domains
-
-DOMAINS="example.com example.org example.net"
-
-for domain in $DOMAINS; do
-    echo "Scanning $domain..."
-    python3 dns_scraper.py "$$domain" -o "exports/$${domain}"
-done
-```
-
-### Compare DNS Across Resolvers
-
-```bash
-#!/bin/bash
-# compare_resolvers.sh - Compare results from different DNS servers
-
-DOMAIN=\$1
-RESOLVERS="8.8.8.8 1.1.1.1 9.9.9.9"
-
-for resolver in $RESOLVERS; do
-    echo "Querying $resolver..."
-    python3 dns_scraper.py "$$DOMAIN" -n "$$resolver" -f csv -o "$${DOMAIN}_$${resolver}" --no-subdomains
-done
-
-echo "Comparing results..."
-diff "$${DOMAIN}_8.8.8.8.csv" "$${DOMAIN}_1.1.1.1.csv"
-```
-
-### Export and Process with Shell Tools
-
-```bash
-# Extract just A records from CSV
-python3 dns_scraper.py example.com -f csv -o scan
-grep ",A," scan.csv | cut -d',' -f1,4
-
-# Count records by type
-tail -n +2 scan.csv | cut -d',' -f2 | sort | uniq -c | sort -rn
-
-# Find all Cloudflare DNS records
-grep "CLOUDFLARE_DNS" scan.csv
-```
-
-### Cron Job for DNS Monitoring
-
-```bash
-#!/bin/bash
-# dns_monitor.sh - Track DNS changes over time
-
-DOMAIN="example.com"
-DATE=$(date +%Y%m%d)
-DIR="$$HOME/dns_history/$$DOMAIN"
-
-mkdir -p "$DIR"
-python3 dns_scraper.py "$$DOMAIN" -f csv -o "$$DIR/$DATE"
-
-# Alert on changes
-if [ -f "$DIR/latest.csv" ]; then
-    if ! diff -q "$$DIR/$$DATE.csv" "$DIR/latest.csv" > /dev/null; then
-        echo "DNS changes detected for $DOMAIN"
-        diff "$$DIR/latest.csv" "$$DIR/$DATE.csv"
-    fi
-fi
-
-ln -sf "$$DIR/$$DATE.csv" "$DIR/latest.csv"
-```
-
-### Combine with Certificate Transparency
-
-```bash
-#!/bin/bash
-# comprehensive_scan.sh - Combine with CT logs
-
-DOMAIN=\$1
-OUTPUT_DIR="./recon_$DOMAIN"
-mkdir -p "$OUTPUT_DIR"
-
-# DNS Scraper
-python3 dns_scraper.py "$$DOMAIN" -o "$$OUTPUT_DIR/dns" -v
-
-# Certificate Transparency
-curl -s "https://crt.sh/?q=%25.$DOMAIN&output=json" 2>/dev/null | \
-    python3 -c "import sys,json; print('\n'.join(set(x['name_value'] for x in json.load(sys.stdin))))" | \
-    sort -u > "$OUTPUT_DIR/ct_domains.txt"
-
-# Combine results
-cat "$$OUTPUT_DIR/dns.csv" | tail -n +2 | cut -d',' -f1 | sort -u > "$$OUTPUT_DIR/dns_domains.txt"
-cat "$$OUTPUT_DIR/ct_domains.txt" "$$OUTPUT_DIR/dns_domains.txt" | sort -u > "$OUTPUT_DIR/all_domains.txt"
-
-echo "Found $$(wc -l < "$$OUTPUT_DIR/all_domains.txt") unique hostnames"
-```
-
-## Subdomain Coverage
-
-### Email Authentication Records
-
-| Record Type | Subdomain | Valid DNS Types |
-|-------------|-----------|-----------------|
-| DMARC | `_dmarc` | TXT, CNAME |
-| MTA-STS | `_mta-sts` | TXT only |
-| MTA-STS Policy | `mta-sts` | A, AAAA, CNAME, TXT |
-| TLS-RPT | `_smtp._tls` | TXT, CNAME |
-| BIMI | `default._bimi` | TXT, CNAME |
-| DKIM | `*._domainkey` | TXT, CNAME |
-
-### Email Service Provider DKIM Selectors
-
-| Provider | Selectors |
-|----------|-----------|
-| Pressable | `openhosting1._domainkey`, `openhosting2._domainkey` |
-| Klaviyo | `kl._domainkey`, `kl2._domainkey` |
-| Mailchimp | `k2._domainkey`, `k3._domainkey`, `mte1._domainkey` |
-| MailPoet | `mailpoet1._domainkey`, `mailpoet2._domainkey` |
-| SendGrid | `s1._domainkey`, `s2._domainkey`, `smtpapi._domainkey` |
-| Postmark | `pm._domainkey` |
-| HubSpot | `hs1._domainkey`, `hs2._domainkey` |
-| Salesforce | `sf._domainkey`, `pardot._domainkey` |
-| ActiveCampaign | `acdkim1._domainkey`, `acdkim2._domainkey` |
-| Google Workspace | `google._domainkey` |
-| Microsoft 365 | `selector1._domainkey`, `selector2._domainkey` |
-| Mailgun | `mailo._domainkey`, `mx._domainkey` |
-| Brevo (Sendinblue) | `brevo._domainkey`, `sendinblue._domainkey` |
-| ConvertKit | `convertkit._domainkey`, `ck._domainkey` |
-| And more... | Mailjet, SparkPost, Zoho, Intercom, Customer.io, etc. |
-
-### Verification Records (TXT or CNAME)
-
-- `_google` - Google site verification
-- `_github-challenge` - GitHub Pages
-- `_stripe` - Stripe domain verification
-- `_amazonses` - Amazon SES
-- `_cf-custom-hostname` - Cloudflare
-- `_atproto` - Bluesky
-- `_domainconnect` - Domain Connect protocol
-- `_acme-challenge` - Let's Encrypt / ACME
-
-### TXT-Only Records (Strict RFC)
-
-- `_mta-sts` - MTA-STS policy (RFC 8461)
-- `_facebook` - Facebook domain verification
-
-### Infrastructure Subdomains (200+)
-
-- **Web**: `www`, `cdn`, `static`, `assets`, `api`
-- **Mail**: `mail`, `smtp`, `mx`, `exchange`, `autodiscover`
-- **Dev**: `dev`, `staging`, `test`, `beta`, `uat`
-- **Admin**: `admin`, `cpanel`, `dashboard`, `portal`
-- **Cloud**: `aws`, `azure`, `gcp`, `s3`, `storage`
+Exhaustive mode queries every configured root record type for every configured
+subdomain. It is slower and produces more DNS traffic than smart mode.
 
 ## Output Formats
 
-**BIND (.zone)** — Standard zone file for DNS servers  
-**CSV (.csv)** — `Hostname,Record Type,TTL,Value,Warning`  
-**TXT (.txt)** — Human-readable report with notices
+Exports are only written when `-o` or `--output` is provided.
+
+- BIND zone-style output: `<output>.zone`
+- CSV output with `Hostname,Record Type,TTL,Value,Warning`: `<output>.csv`
+- Human-readable text output: `<output>.txt`
+
+Generated `.zone`, `.csv`, and `.txt` files are ignored by `.gitignore`, except
+for the tracked `requirements.txt` file.
+
+## Maintenance Notes
+
+- Update DNS record type coverage and subdomain coverage in the constants near
+  the top of `dns_scraper.py`.
+- Add Python dependencies to `requirements.txt`.
+- Avoid committing generated exports, `output/`, `exports/`, `results/`, virtual
+  environments, or Python cache files.
+- Because no automated test or lint command is tracked, use targeted manual
+  checks after code changes, such as `python3 -m py_compile dns_scraper.py`.
 
 ## Limitations
 
-This tool cannot discover:
-- Randomly-named subdomains not in the wordlist
-- Records behind DNS firewalls
-- Internal-only records
-- True origin IPs behind Cloudflare proxy (orange cloud)
-
-For complete zone data, you need zone transfer access or DNS provider API access.
+- Static subdomain enumeration cannot discover arbitrary or randomly named
+  subdomains.
+- AXFR usually requires explicit DNS server permission and often fails.
+- DNS firewalls, split-horizon DNS, and internal-only records may hide records
+  from public resolvers.
+- Cloudflare-proxied A and AAAA records can return edge IP addresses rather than
+  origin IP addresses.
+- The scraper does not call DNS provider APIs.
 
 ## License
 
-MIT
+MIT. See `LICENSE`.
